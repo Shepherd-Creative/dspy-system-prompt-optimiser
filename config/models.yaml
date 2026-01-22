@@ -1,0 +1,312 @@
+# LLM Model Configuration for Prompt Optimiser
+# Curated selection of models for system prompt testing
+# All models accessed via OpenRouter API (https://openrouter.ai/api/v1)
+
+# API Configuration
+api:
+  base_url: "https://openrouter.ai/api/v1"
+  env_key: "OPENROUTER_API_KEY"
+
+# Testing Strategy
+# ================
+# Phase 1: Initial Screening (first 3 prompts)
+#   - Spin up agents for ALL models in parallel
+#   - Run identical prompts across all models
+#   - Collect and compare results
+#
+# Phase 2: Model Selection
+#   - Reason over Phase 1 results
+#   - Identify which model(s) perform best for the use case
+#   - Consider: response quality, cost efficiency, latency
+#
+# Phase 3: Deep Testing
+#   - Focus testing on selected model(s)
+#   - Run full prompt optimization cycles
+
+# Model Families
+families:
+  anthropic:
+    name: "Anthropic (Claude)"
+    description: "Claude models - strong reasoning, safety, instruction following"
+
+  google:
+    name: "Google (Gemini)"
+    description: "Gemini models - large context, multimodal, fast"
+
+  xai:
+    name: "xAI (Grok)"
+    description: "Grok models - real-time knowledge, reasoning, 2M context"
+
+  deepseek:
+    name: "DeepSeek"
+    description: "DeepSeek models - excellent cost/performance ratio"
+
+# Recommended Models by Tier (for quick selection)
+recommended:
+  # Budget: Fast iteration, cost-effective screening
+  budget:
+    primary: "deepseek/deepseek-v3.2-exp"           # $0.21/$0.32 - best value
+    alternatives:
+      - "google/gemini-2.5-flash-lite-preview-09-2025"  # $0.10/$0.40
+      - "x-ai/grok-4-fast"                              # $0.20/$0.50
+      - "x-ai/grok-4.1-fast"                            # $0.20/$0.50
+
+  # Balanced: Good quality/cost ratio for main testing
+  balanced:
+    primary: "google/gemini-2.5-flash"             # $0.30/$2.50 - great balance
+    alternatives:
+      - "google/gemini-3-flash-preview"                 # $0.50/$3.00
+      - "anthropic/claude-haiku-4.5"                    # $1.00/$5.00
+      - "deepseek/deepseek-v3.1-nex-n1"                 # $0.27/$1.00
+
+  # Premium: Final validation with best models
+  premium:
+    primary: "anthropic/claude-sonnet-4.5"         # $3.00/$15.00 - top tier
+    alternatives:
+      - "anthropic/claude-opus-4.5"                     # $5.00/$25.00
+      - "google/gemini-2.5-pro"                         # $1.25/$10.00
+      - "x-ai/grok-4"                                   # $3.00/$15.00
+
+# =============================================================================
+# CURATED MODEL LIST (17 models, sorted by output cost descending)
+# =============================================================================
+models:
+  # -----------------------------
+  # PREMIUM TIER ($5+ output)
+  # -----------------------------
+  - id: "anthropic/claude-opus-4.5"
+    name: "Claude Opus 4.5"
+    provider: anthropic
+    context_length: 200000
+    pricing:
+      input_per_1m: 5.00
+      output_per_1m: 25.00
+    tier: premium
+    capabilities: [reasoning, coding, agentic, computer_use, vision]
+    notes: "Anthropic's frontier reasoning model"
+
+  - id: "x-ai/grok-4"
+    name: "Grok 4"
+    provider: xai
+    context_length: 256000
+    pricing:
+      input_per_1m: 3.00
+      output_per_1m: 15.00
+    tier: premium
+    capabilities: [reasoning, multimodal, tool_use, structured_output]
+    notes: "xAI's flagship reasoning model"
+
+  - id: "anthropic/claude-sonnet-4.5"
+    name: "Claude Sonnet 4.5"
+    provider: anthropic
+    context_length: 1000000
+    pricing:
+      input_per_1m: 3.00
+      output_per_1m: 15.00
+    tier: premium
+    capabilities: [coding, reasoning, agentic, long_context, vision]
+    notes: "Best balance of capability and cost for Anthropic"
+
+  - id: "anthropic/claude-3.7-sonnet"
+    name: "Claude 3.7 Sonnet"
+    provider: anthropic
+    context_length: 200000
+    pricing:
+      input_per_1m: 3.00
+      output_per_1m: 15.00
+    tier: premium
+    capabilities: [coding, reasoning, thinking, vision, tool_use]
+    notes: "Hybrid reasoning with thinking mode"
+
+  - id: "google/gemini-3-pro-preview"
+    name: "Gemini 3 Pro Preview"
+    provider: google
+    context_length: 1048576
+    pricing:
+      input_per_1m: 2.00
+      output_per_1m: 12.00
+    tier: premium
+    capabilities: [reasoning, multimodal, long_context, agentic]
+    notes: "Google's flagship frontier model"
+
+  - id: "google/gemini-2.5-pro"
+    name: "Gemini 2.5 Pro"
+    provider: google
+    context_length: 1048576
+    pricing:
+      input_per_1m: 1.25
+      output_per_1m: 10.00
+    tier: premium
+    capabilities: [reasoning, coding, math, science, long_context, thinking]
+    notes: "Strong reasoning with 1M context"
+
+  # -----------------------------
+  # BALANCED TIER ($1-5 output)
+  # -----------------------------
+  - id: "anthropic/claude-haiku-4.5"
+    name: "Claude Haiku 4.5"
+    provider: anthropic
+    context_length: 200000
+    pricing:
+      input_per_1m: 1.00
+      output_per_1m: 5.00
+    tier: balanced
+    capabilities: [fast, coding, tool_use, chat]
+    notes: "Fast and efficient, matches Sonnet 4 performance"
+
+  - id: "google/gemini-3-flash-preview"
+    name: "Gemini 3 Flash Preview"
+    provider: google
+    context_length: 1048576
+    pricing:
+      input_per_1m: 0.50
+      output_per_1m: 3.00
+    tier: balanced
+    capabilities: [agentic, reasoning, tool_use, long_context]
+    notes: "Near Pro-level reasoning at Flash pricing"
+
+  - id: "google/gemini-2.5-flash"
+    name: "Gemini 2.5 Flash"
+    provider: google
+    context_length: 1048576
+    pricing:
+      input_per_1m: 0.30
+      output_per_1m: 2.50
+    tier: balanced
+    capabilities: [reasoning, coding, long_context, thinking]
+    notes: "Excellent workhorse model with thinking"
+
+  - id: "nex-agi/deepseek-v3.1-nex-n1"
+    name: "DeepSeek V3.1 Nex N1"
+    provider: deepseek
+    context_length: 163840
+    pricing:
+      input_per_1m: 0.27
+      output_per_1m: 1.00
+    tier: balanced
+    capabilities: [reasoning, coding]
+    notes: "Enhanced DeepSeek variant"
+
+  # -----------------------------
+  # BUDGET TIER (<$1 output)
+  # -----------------------------
+  - id: "deepseek/deepseek-v3.1-terminus:exacto"
+    name: "DeepSeek V3.1 Terminus (Exacto)"
+    provider: deepseek
+    context_length: 163840
+    pricing:
+      input_per_1m: 0.21
+      output_per_1m: 0.79
+    tier: budget
+    capabilities: [reasoning, coding, fast]
+    notes: "Optimized for precise outputs"
+
+  - id: "x-ai/grok-4.1-fast"
+    name: "Grok 4.1 Fast"
+    provider: xai
+    context_length: 2000000
+    pricing:
+      input_per_1m: 0.20
+      output_per_1m: 0.50
+    tier: budget
+    capabilities: [fast, agentic, tool_use, long_context]
+    notes: "2M context, best for agentic workflows"
+
+  - id: "x-ai/grok-4-fast"
+    name: "Grok 4 Fast"
+    provider: xai
+    context_length: 2000000
+    pricing:
+      input_per_1m: 0.20
+      output_per_1m: 0.50
+    tier: budget
+    capabilities: [fast, long_context, multimodal, reasoning]
+    notes: "2M context at budget pricing"
+
+  - id: "google/gemini-2.5-flash-lite-preview-09-2025"
+    name: "Gemini 2.5 Flash Lite Preview"
+    provider: google
+    context_length: 1048576
+    pricing:
+      input_per_1m: 0.10
+      output_per_1m: 0.40
+    tier: budget
+    capabilities: [fast, long_context, reasoning]
+    notes: "Ultra-low latency and cost"
+
+  - id: "deepseek/deepseek-v3.2"
+    name: "DeepSeek V3.2"
+    provider: deepseek
+    context_length: 163840
+    pricing:
+      input_per_1m: 0.25
+      output_per_1m: 0.38
+    tier: budget
+    capabilities: [reasoning, coding, agentic]
+    notes: "Latest DeepSeek, excellent value"
+
+  - id: "deepseek/deepseek-v3.2-exp"
+    name: "DeepSeek V3.2 Experimental"
+    provider: deepseek
+    context_length: 163840
+    pricing:
+      input_per_1m: 0.21
+      output_per_1m: 0.32
+    tier: budget
+    capabilities: [reasoning, coding, agentic]
+    notes: "Cheapest quality model - great for screening"
+
+# Capability Definitions
+capabilities:
+  fast: "Optimized for low latency responses"
+  coding: "Strong at code generation and debugging"
+  reasoning: "Advanced logical reasoning capabilities"
+  vision: "Can process image inputs"
+  multimodal: "Supports multiple input/output modalities"
+  tool_use: "Can use tools and function calling"
+  long_context: "Supports 500K+ token context windows"
+  thinking: "Built-in chain-of-thought reasoning"
+  agentic: "Optimized for autonomous agent workflows"
+  math: "Strong mathematical problem solving"
+  science: "Strong scientific reasoning"
+  computer_use: "Can control computer interfaces"
+  structured_output: "Reliable JSON/structured output"
+  chat: "Optimized for conversational interactions"
+
+# Tier Definitions
+tiers:
+  budget:
+    description: "Cost-effective models for rapid screening and iteration"
+    output_cost_max: 1.00
+    use_case: "Initial screening, high-volume testing"
+  balanced:
+    description: "Good performance/cost ratio for main testing"
+    output_cost_max: 5.00
+    use_case: "Primary development and testing"
+  premium:
+    description: "Best performance for final validation"
+    output_cost_max: 100.00
+    use_case: "Final validation, complex reasoning tasks"
+
+# Quick Reference: Models by Provider
+by_provider:
+  anthropic:
+    - "anthropic/claude-opus-4.5"
+    - "anthropic/claude-sonnet-4.5"
+    - "anthropic/claude-3.7-sonnet"
+    - "anthropic/claude-haiku-4.5"
+  google:
+    - "google/gemini-3-pro-preview"
+    - "google/gemini-2.5-pro"
+    - "google/gemini-3-flash-preview"
+    - "google/gemini-2.5-flash"
+    - "google/gemini-2.5-flash-lite-preview-09-2025"
+  xai:
+    - "x-ai/grok-4"
+    - "x-ai/grok-4.1-fast"
+    - "x-ai/grok-4-fast"
+  deepseek:
+    - "nex-agi/deepseek-v3.1-nex-n1"
+    - "deepseek/deepseek-v3.1-terminus:exacto"
+    - "deepseek/deepseek-v3.2"
+    - "deepseek/deepseek-v3.2-exp"

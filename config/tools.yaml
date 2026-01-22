@@ -1,0 +1,221 @@
+# RAG Tools Configuration
+# This file defines the HTTP endpoints and parameters for sub-agent tools
+
+tools:
+  - name: dynamic_hybrid_search
+    description: |
+      Query data from knowledgebase using hybrid search (vector, lexical, ilike and fuzzy).
+      Weights: dense_weight, sparse_weight (defaults 0.5), ilike_weight, fuzzy_weight (defaults 0).
+      fuzzy_threshold default 0.8. Total of 4 weights must equal 1.
+    parameters:
+      query:
+        type: string
+        required: true
+        source: model
+      type:
+        type: string
+        default: "hybrid"
+      session_id:
+        type: string
+        required: true
+        source: sub_agent
+        description: "Session ID created by Prompt Optimiser agent, unique per sub-agent"
+      dense_weight:
+        type: number
+        default: 0.5
+        source: model
+      sparse_weight:
+        type: number
+        default: 0.5
+        source: model
+      ilike_weight:
+        type: number
+        default: 0
+        source: model
+      fuzzy_weight:
+        type: number
+        default: 0
+        source: model
+      fuzzy_threshold:
+        type: number
+        default: 0.8
+        source: model
+    endpoint:
+      url: "${N8N_WEBHOOK_BASE_URL}/231197f8-d72a-42da-8ddd-9ab0e19c5f8a"
+      method: POST
+      headers:
+        Content-Type: application/json
+      body_template: |
+        {
+          "query": "{{query}}",
+          "type": "{{type}}",
+          "session_id": "{{session_id}}",
+          "dense_weight": {{dense_weight}},
+          "sparse_weight": {{sparse_weight}},
+          "ilike_weight": {{ilike_weight}},
+          "fuzzy_weight": {{fuzzy_weight}},
+          "fuzzy_threshold": {{fuzzy_threshold}}
+        }
+
+  - name: query_knowledge_graph
+    description: |
+      Query the knowledge graph for entity relationships and connections.
+      Uses the same n8n workflow endpoint as hybrid search but routes to graph path.
+      All weights must be 0 for graph queries.
+    parameters:
+      query:
+        type: string
+        required: true
+        source: model
+      session_id:
+        type: string
+        required: true
+        source: sub_agent
+        description: "Session ID created by Prompt Optimiser agent, unique per sub-agent"
+    endpoint:
+      url: "${N8N_WEBHOOK_BASE_URL}/231197f8-d72a-42da-8ddd-9ab0e19c5f8a"
+      method: POST
+      headers:
+        Content-Type: application/json
+      body_template: |
+        {
+          "query": "{{query}}",
+          "session_id": "{{session_id}}",
+          "type": "graph",
+          "dense_weight": 0,
+          "sparse_weight": 0,
+          "ilike_weight": 0,
+          "fuzzy_weight": 0,
+          "fuzzy_threshold": 0
+        }
+
+  - name: context_expansion
+    description: |
+      Expand context by fetching neighbouring chunks, parent chunks etc.
+      Body format: [{"doc_id": "doc-id-12345-abcde", "chunk_ranges": [[0, 5]]}]
+    parameters:
+      chunks:
+        type: array
+        required: true
+        source: model
+        description: "Array of {doc_id, chunk_ranges} objects"
+    endpoint:
+      url: "${SUPABASE_URL}/functions/v1/context-expansion"
+      method: POST
+      headers:
+        Content-Type: application/json
+        Authorization: "Bearer ${SUPABASE_ANON_KEY}"
+        apikey: "${SUPABASE_ANON_KEY}"
+      body_template: "{{chunks | tojson}}"
+
+  - name: fetch_document_hierarchy
+    description: |
+      Fetch document hierarchy from record_manager_v2 table by doc_id.
+    parameters:
+      doc_id:
+        type: string
+        required: true
+        source: model
+    endpoint:
+      type: supabase
+      connection: "${SUPABASE_URL}"
+      table: record_manager_v2
+      operation: select
+      filter: "doc_id=eq.{{doc_id}}"
+
+  - name: query_tabular_rows
+    description: |
+      Execute SQL query on tabular_document_rows table.
+      Use row_data->> operator to extract JSON values.
+      Always filter by record_manager_id.
+    parameters:
+      sql_query:
+        type: string
+        required: true
+        source: model
+    endpoint:
+      type: postgres
+      connection: "${POSTGRES_CONNECTION_STRING}"
+      operation: execute_query
+
+  - name: short_term_memory
+    description: |
+      Access short-term conversation memory from n8n_chat_histories table.
+      Useful for retrieving recent conversation context.
+    parameters:
+      session_id:
+        type: string
+        required: true
+        source: sub_agent
+        description: "Session ID created by Prompt Optimiser agent, unique per sub-agent"
+      limit:
+        type: integer
+        default: 10
+        source: model
+    endpoint:
+      type: postgres
+      connection: "${POSTGRES_CONNECTION_STRING}"
+      operation: select
+      table: n8n_chat_histories
+      filter: "session_id=eq.{{session_id}}"
+      order: "created_at.desc"
+      limit: "{{limit}}"
+
+  - name: get_datasets_from_record_manager
+    description: |
+      Fetch all available tabular documents from record_manager.
+      Returns id, document_title, and schema.
+    parameters: {}
+    endpoint:
+      type: postgres
+      connection: "${POSTGRES_CONNECTION_STRING}"
+      operation: select
+      table: record_manager_v2
+      filter: "data_type=eq.tabular"
+      columns: "id,document_title,schema"
+
+  - name: get_long_term_memories
+    description: |
+      Retrieve temporal/long-term memories for a user from Zep graph.
+      Called by Prompt Optimiser agent before spawning sub-agents.
+      Returns relevant memories based on the user query.
+    parameters:
+      query:
+        type: string
+        required: true
+        source: prompt_optimiser
+        description: "User query to search memories for"
+      user_id:
+        type: string
+        required: true
+        source: env
+        env_var: ZEP_USER_ID
+        description: "User ID from .env (pierre_gallet_digital_twin)"
+      scope:
+        type: string
+        default: "edges"
+        description: "Memory scope to search"
+      limit:
+        type: integer
+        default: 5
+        description: "Max memories to return"
+      min_relevance:
+        type: number
+        default: 0.7
+        description: "Minimum relevance score filter"
+    endpoint:
+      url: "${ZEP_API_URL}/api/v2/graph/search"
+      method: POST
+      headers:
+        Content-Type: application/json
+        Authorization: "Api-Key ${ZEP_API_KEY}"
+      body_template: |
+        {
+          "user_id": "{{user_id}}",
+          "query": "{{query}}",
+          "scope": "{{scope}}",
+          "limit": {{limit}},
+          "search_filters": {
+            "min_relevance": {{min_relevance}}
+          }
+        }
