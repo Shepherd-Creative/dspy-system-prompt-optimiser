@@ -1,0 +1,28 @@
+# Gitleaks custom configuration
+# Extends default rules with additional patterns
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''\.env\.example$''',
+]
+
+[[rules]]
+id = "postgres-connection-string"
+description = "PostgreSQL connection string with embedded password"
+regex = '''(?i)postgres(?:ql)?:\/\/[^:]+:[^@]+@[^\/]+'''
+keywords = ["postgres", "postgresql"]
+
+[[rules]]
+id = "database-url"
+description = "Generic database URL with credentials"
+regex = '''(?i)(?:mysql|postgres|postgresql|mongodb|redis):\/\/[^:]+:[^@\s]+@[^\s]+'''
+keywords = ["mysql", "postgres", "mongodb", "redis"]
+
+[[rules]]
+id = "connection-string-password"
+description = "Connection string with password parameter"
+regex = '''(?i)(?:password|pwd)\s*=\s*[^\s;]+'''
+keywords = ["password", "pwd"]
