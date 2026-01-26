@@ -86,7 +86,7 @@ class OpenRouterLLM(DeepEvalBaseLLM if DEEPEVAL_AVAILABLE else object):
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
-                "X-Title": "DSPy Prompt Optimizer - Evaluator",
+                "X-Title": "Prompt Optimser Agent - Evaluator",
             },
             json={
                 "model": self.model_id,
@@ -115,7 +115,7 @@ class OpenRouterLLM(DeepEvalBaseLLM if DEEPEVAL_AVAILABLE else object):
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json",
-                    "X-Title": "DSPy Prompt Optimizer - Evaluator",
+                    "X-Title": "Prompt Optimser Agent - Evaluator",
                 },
                 json={
                     "model": self.model_id,
@@ -184,6 +184,7 @@ class DeepEvalEvaluator:
         user_input: str,
         model_output: str,
         criteria: EvaluationCriteria,
+        system_prompt: Optional[str] = None,
     ) -> tuple[float, str]:
         """
         Evaluate a single response against one criterion.
@@ -192,14 +193,22 @@ class DeepEvalEvaluator:
             user_input: The original user prompt
             model_output: The model's response
             criteria: The evaluation criteria
+            system_prompt: The system prompt the agent was given (for context)
 
         Returns:
             Tuple of (score, reason)
         """
         metric = self.create_metric(criteria)
+
+        # Build context from system prompt if provided
+        context = None
+        if system_prompt:
+            context = [f"SYSTEM PROMPT (instructions the agent was given):\n{system_prompt}"]
+
         test_case = LLMTestCase(
             input=user_input,
             actual_output=model_output,
+            context=context,
         )
         metric.measure(test_case)
         return metric.score, metric.reason
@@ -209,6 +218,7 @@ class DeepEvalEvaluator:
         user_input: str,
         model_output: str,
         criteria: EvaluationCriteria,
+        system_prompt: Optional[str] = None,
     ) -> tuple[float, str]:
         """
         Asynchronously evaluate a single response against one criterion.
@@ -217,6 +227,7 @@ class DeepEvalEvaluator:
             user_input: The original user prompt
             model_output: The model's response
             criteria: The evaluation criteria
+            system_prompt: The system prompt the agent was given (for context)
 
         Returns:
             Tuple of (score, reason)
@@ -230,25 +241,125 @@ class DeepEvalEvaluator:
                 user_input,
                 model_output,
                 criteria,
+                system_prompt,
             )
+
+    async def evaluate_tool_relevancy(
+        self,
+        response: ModelResponse,
+        user_input: str,
+        system_prompt: Optional[str] = None,
+    ) -> ModelResponse:
+        """
+        Evaluate the relevancy of all tool calls in a response.
+
+        Args:
+            response: The ModelResponse containing tool calls
+            user_input: The original user prompt
+            system_prompt: The system prompt the agent was given (for context)
+
+        Returns:
+            ModelResponse with tool_calls updated with relevance scores
+        """
+        if not response.tool_calls:
+            return response
+
+        # Extract tool orchestration section from system prompt if available
+        tool_instructions = ""
+        if system_prompt:
+            # Try to extract relevant sections
+            if "TOOL ORCHESTRATION" in system_prompt:
+                start = system_prompt.find("# TOOL ORCHESTRATION")
+                end = system_prompt.find("\n# ", start + 1)
+                if end == -1:
+                    end = len(system_prompt)
+                tool_instructions = system_prompt[start:end]
+            else:
+                tool_instructions = system_prompt[:2000]  # First 2000 chars as fallback
+
+        async def evaluate_single_tool(tool_call) -> tuple[float, str]:
+            prompt = f"""You are an expert judge of AI Agent behavior.
+Evaluate the following TOOL CALL based on the CONTEXT and INSTRUCTIONS the agent was given.
+
+SYSTEM PROMPT INSTRUCTIONS (what the agent was told to do):
+{tool_instructions if tool_instructions else "[No system prompt provided]"}
+
+CONTEXT:
+[User]: "{user_input}"
+[Agent Intent]: The agent decided to call tools to resolve this.
+
+TOOL CALL:
+Function: {tool_call.tool_name}
+Arguments: {tool_call.parameters}
+
+CRITERIA:
+1. Did the agent follow the tool orchestration rules in the system prompt?
+2. Was this tool the correct choice per the decision tree (if specified)?
+3. Did the arguments make sense given the user's goal and system instructions?
+4. IMPORTANT: IGNORE the result. Judge only the INTENT and LOGIC of making this call.
+
+Provide your evaluation in the following format:
+SCORE: [0.0 to 1.0]
+REASON: [Brief explanation]
+"""
+            score, reason = await self.judge_model.a_generate(prompt) if hasattr(self.judge_model, 'a_generate') else (0.0, "Async eval not supported")
+
+            # Simple parsing of the judge's text response
+            final_score = 0.5
+            final_reason = reason
+
+            if "SCORE:" in reason:
+                try:
+                    score_line = reason.split("SCORE:")[1].split("\n")[0].strip()
+                    final_score = float(score_line)
+                except:
+                    pass
+
+            if "REASON:" in reason:
+                final_reason = reason.split("REASON:")[1].strip()
+
+            return final_score, final_reason
+
+        # Run evaluations in parallel
+        tasks = [evaluate_single_tool(tc) for tc in response.tool_calls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for tc, result in zip(response.tool_calls, results):
+            if isinstance(result, Exception):
+                tc.relevance_score = 0.0
+                tc.relevance_reason = f"Eval error: {str(result)}"
+            else:
+                score, reason = result
+                tc.relevance_score = score
+                tc.relevance_reason = reason
+
+        return response
 
     async def evaluate_model_response(
         self,
         response: ModelResponse,
         user_input: str,
         criteria_list: List[EvaluationCriteria],
+        system_prompt: Optional[str] = None,
     ) -> ModelResponse:
         """
         Evaluate a model response against all criteria.
+
+        Also triggers tool relevancy evaluation if tool calls are present.
 
         Args:
             response: The ModelResponse to evaluate
             user_input: The original user prompt
             criteria_list: List of evaluation criteria
+            system_prompt: The system prompt the agent was given (for context)
 
         Returns:
             ModelResponse with eval_scores and eval_reasons populated
         """
+        # 1. Evaluate Tool Relevancy (if any)
+        if response.tool_calls:
+            await self.evaluate_tool_relevancy(response, user_input, system_prompt)
+
         if not response.success or not response.content:
             return response
 
@@ -256,7 +367,7 @@ class DeepEvalEvaluator:
         reasons: Dict[str, str] = {}
 
         tasks = [
-            self.evaluate_response_async(user_input, response.content, criteria)
+            self.evaluate_response_async(user_input, response.content, criteria, system_prompt)
             for criteria in criteria_list
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -305,6 +416,9 @@ class DeepEvalEvaluator:
                 ),
             ]
 
+        # Get the system prompt from the summary for context-aware evaluation
+        system_prompt = summary.system_prompt
+
         tasks = []
         for result in summary.results:
             for response in result.responses:
@@ -313,6 +427,7 @@ class DeepEvalEvaluator:
                         response=response,
                         user_input=result.prompt_content,
                         criteria_list=criteria,
+                        system_prompt=system_prompt,
                     )
                     tasks.append(task)
 
@@ -354,6 +469,7 @@ class SimpleLLMEvaluator:
         user_input: str,
         model_output: str,
         criteria: EvaluationCriteria,
+        system_prompt: Optional[str] = None,
     ) -> tuple[float, str]:
         """
         Evaluate a response using direct LLM prompting.
@@ -362,13 +478,28 @@ class SimpleLLMEvaluator:
             user_input: The original user prompt
             model_output: The model's response
             criteria: The evaluation criteria
+            system_prompt: The system prompt the agent was given (for context)
 
         Returns:
             Tuple of (score, reason)
         """
-        prompt = f"""You are an expert evaluator. Evaluate the following response based on the given criteria.
+        # Build system prompt context section
+        system_context = ""
+        if system_prompt:
+            # Truncate if too long to avoid token limits
+            truncated_prompt = system_prompt[:4000] if len(system_prompt) > 4000 else system_prompt
+            system_context = f"""SYSTEM PROMPT (instructions the agent was given):
+{truncated_prompt}
+{"[...truncated]" if len(system_prompt) > 4000 else ""}
 
-CRITERIA: {criteria.name}
+---
+
+"""
+
+        prompt = f"""You are an expert evaluator. Evaluate the following response based on the given criteria.
+The agent was given specific instructions in a system prompt - evaluate whether it followed them.
+
+{system_context}CRITERIA: {criteria.name}
 {criteria.criteria}
 
 USER INPUT:
@@ -379,7 +510,7 @@ MODEL RESPONSE:
 
 Provide your evaluation in the following format:
 SCORE: [0.0 to 1.0]
-REASON: [Brief explanation]
+REASON: [Brief explanation of how well the response followed the system prompt instructions]
 
 Be objective and strict in your evaluation."""
 
@@ -406,11 +537,106 @@ Be objective and strict in your evaluation."""
             except Exception as e:
                 return 0.0, f"Evaluation error: {e}"
 
+    async def evaluate_tool_relevancy(
+        self,
+        response: ModelResponse,
+        user_input: str,
+        system_prompt: Optional[str] = None,
+    ) -> ModelResponse:
+        """
+        Evaluate the relevancy of all tool calls in a response.
+
+        Args:
+            response: The ModelResponse containing tool calls
+            user_input: The original user prompt
+            system_prompt: The system prompt the agent was given (for context)
+
+        Returns:
+            ModelResponse with tool_calls updated with relevance scores
+        """
+        if not response.tool_calls:
+            return response
+
+        # Extract tool orchestration section from system prompt if available
+        tool_instructions = ""
+        if system_prompt:
+            # Try to extract relevant sections
+            if "TOOL ORCHESTRATION" in system_prompt:
+                start = system_prompt.find("# TOOL ORCHESTRATION")
+                end = system_prompt.find("\n# ", start + 1)
+                if end == -1:
+                    end = len(system_prompt)
+                tool_instructions = system_prompt[start:end]
+            else:
+                tool_instructions = system_prompt[:2000]  # First 2000 chars as fallback
+
+        async def evaluate_single_tool(tool_call) -> tuple[float, str]:
+            prompt = f"""You are an expert judge of AI Agent behavior.
+Evaluate the following TOOL CALL based on the CONTEXT and INSTRUCTIONS the agent was given.
+
+SYSTEM PROMPT INSTRUCTIONS (what the agent was told to do):
+{tool_instructions if tool_instructions else "[No system prompt provided]"}
+
+CONTEXT:
+[User]: "{user_input}"
+[Agent Intent]: The agent decided to call tools to resolve this.
+
+TOOL CALL:
+Function: {tool_call.tool_name}
+Arguments: {tool_call.parameters}
+
+CRITERIA:
+1. Did the agent follow the tool orchestration rules in the system prompt?
+2. Was this tool the correct choice per the decision tree (if specified)?
+3. Did the arguments make sense given the user's goal and system instructions?
+4. IMPORTANT: IGNORE the result. Judge only the INTENT and LOGIC of making this call.
+
+Provide your evaluation in the following format:
+SCORE: [0.0 to 1.0]
+REASON: [Brief explanation]
+"""
+            # Use judge model directly
+            try:
+                result = await self.judge_model.a_generate(prompt)
+
+                final_score = 0.5
+                final_reason = result
+
+                if "SCORE:" in result:
+                    try:
+                        score_line = result.split("SCORE:")[1].split("\n")[0].strip()
+                        final_score = float(score_line)
+                    except:
+                        pass
+
+                if "REASON:" in result:
+                    final_reason = result.split("REASON:")[1].strip()
+
+                return final_score, final_reason
+            except Exception as e:
+                return 0.0, f"Evaluation error: {e}"
+
+        # Run evaluations in parallel
+        tasks = [evaluate_single_tool(tc) for tc in response.tool_calls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for tc, result in zip(response.tool_calls, results):
+            if isinstance(result, Exception):
+                tc.relevance_score = 0.0
+                tc.relevance_reason = f"Eval error: {str(result)}"
+            else:
+                score, reason = result
+                tc.relevance_score = score
+                tc.relevance_reason = reason
+
+        return response
+
     async def evaluate_model_response(
         self,
         response: ModelResponse,
         user_input: str,
         criteria_list: List[EvaluationCriteria],
+        system_prompt: Optional[str] = None,
     ) -> ModelResponse:
         """
         Evaluate a model response against all criteria.
@@ -419,10 +645,15 @@ Be objective and strict in your evaluation."""
             response: The ModelResponse to evaluate
             user_input: The original user prompt
             criteria_list: List of evaluation criteria
+            system_prompt: The system prompt the agent was given (for context)
 
         Returns:
             ModelResponse with eval_scores and eval_reasons populated
         """
+        # 1. Evaluate Tool Relevancy (if any)
+        if response.tool_calls:
+            await self.evaluate_tool_relevancy(response, user_input, system_prompt)
+
         if not response.success or not response.content:
             return response
 
@@ -430,7 +661,7 @@ Be objective and strict in your evaluation."""
         reasons: Dict[str, str] = {}
 
         tasks = [
-            self.evaluate_response(user_input, response.content, criteria)
+            self.evaluate_response(user_input, response.content, criteria, system_prompt)
             for criteria in criteria_list
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -478,6 +709,9 @@ Be objective and strict in your evaluation."""
                 ),
             ]
 
+        # Get the system prompt from the summary for context-aware evaluation
+        system_prompt = summary.system_prompt
+
         tasks = []
         for result in summary.results:
             for response in result.responses:
@@ -486,6 +720,7 @@ Be objective and strict in your evaluation."""
                         response=response,
                         user_input=result.prompt_content,
                         criteria_list=criteria,
+                        system_prompt=system_prompt,
                     )
                     tasks.append(task)
 

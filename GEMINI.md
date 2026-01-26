@@ -48,6 +48,14 @@ Errors are learning opportunities. When something breaks:
 4. Update directive to include new flow
 5. System is now stronger
 
+
+**4. ToolExecutor Configuration**
+The `ToolExecutor` (Layer 3) is designed to handle credential loading automatically from `.env`.
+- **Postgres**: If `POSTGRES_CONNECTION_STRING` is in `.env`, the executor will auto-initialize an asyncpg pool.
+- **Supabase**: If `SUPABASE_URL` and `SUPABASE_ANON_KEY` are in `.env`, `type: supabase` tools will function without complex manual configuration in `tools.yaml`.
+- **Zep**: Requires `ZEP_API_URL` and `ZEP_API_KEY`.
+ALWAYS ensure `.env` is populated before running tool-related tests.
+
 ## File Organization
 
 **Deliverables vs Intermediates:**

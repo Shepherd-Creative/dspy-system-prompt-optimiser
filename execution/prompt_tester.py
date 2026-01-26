@@ -153,7 +153,7 @@ class PromptTester:
                         headers={
                             "Authorization": f"Bearer {self.api_key}",
                             "Content-Type": "application/json",
-                            "X-Title": "DSPy Prompt Optimizer",
+                            "X-Title": "Prompt Optimser Agent",
                         },
                         json={
                             "model": model_id,

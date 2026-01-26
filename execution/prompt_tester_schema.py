@@ -41,6 +41,10 @@ class ToolCallRecord:
     latency_ms: float
     success: bool
     error: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    relevance_score: Optional[float] = None
+    relevance_reason: Optional[str] = None
 
 
 @dataclass

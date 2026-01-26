@@ -35,12 +35,10 @@ async def test_tool_executor_http(mock_tool_config):
         
         # Verify request body rendering
         last_request = route.calls.last.request
-        assert last_request.content == b'{"p1": "value1", "p2": 42}'
+        assert last_request.content == b'{"p1":"value1","p2":42}'
 
 @pytest.mark.asyncio
 async def test_tool_executor_missing_param(mock_tool_config):
     executor = ToolExecutor([mock_tool_config])
-    result = await executor.execute("test_tool", {})  # Missing param1
-    
-    assert result.metrics.error
-    assert "Missing required parameter" in str(result.content)
+    with pytest.raises(ValueError, match="Missing required parameter: param1"):
+        await executor.execute("test_tool", {})  # Missing param1

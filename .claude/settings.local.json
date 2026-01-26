@@ -3,7 +3,10 @@
     "allow": [
       "Bash(source .venv/bin/activate)",
       "Bash(PYTHONPATH=. python:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(gitleaks detect:*)",
+      "Bash(cd /Users/pierregallet/Documents/DSPy\\\\ System\\\\ Prompt\\\\ Optimser\\\\ Agent && python scripts/batch_test_subagents.py:*)",
+      "Bash(python:*)"
     ]
   }
 }

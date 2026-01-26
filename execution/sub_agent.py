@@ -36,6 +36,8 @@ class ToolCall:
     latency_ms: float
     success: bool
     error: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
     timestamp: datetime = field(default_factory=datetime.now)
 
 
@@ -269,7 +271,7 @@ class SubAgent:
                         headers={
                             "Authorization": f"Bearer {self.api_key}",
                             "Content-Type": "application/json",
-                            "X-Title": "DSPy Prompt Optimizer - SubAgent",
+                            "X-Title": "Prompt Optimser Agent - SubAgent",
                         },
                         json={
                             "model": self.model_id,
@@ -317,6 +319,11 @@ class SubAgent:
                         # Add assistant message with tool calls to history
                         messages.append(message)
 
+                        # Estimate tokens per tool call by splitting the generation cost
+                        # This is an approximation since we can't get exact tokens per tool call from API
+                        current_output_tokens = usage.get("completion_tokens", 0)
+                        tokens_per_tool = current_output_tokens // len(tool_calls) if tool_calls else 0
+
                         # Execute each tool call
                         for tool_call in tool_calls:
                             tool_start = time.time()
@@ -349,6 +356,11 @@ class SubAgent:
                             tool_call_latency = (time.time() - tool_start) * 1000
                             tool_latency_ms += tool_call_latency
 
+                            # Estimate tokens for the tool result (approx 4 chars per token)
+                            # This helps validat tool efficiency (Latency vs Data Volume)
+                            result_str = json.dumps(tool_result) if not isinstance(tool_result, str) else tool_result
+                            result_tokens = len(result_str) // 4
+
                             # Record tool call
                             tool_calls_history.append(ToolCall(
                                 tool_name=tool_name,
@@ -357,6 +369,8 @@ class SubAgent:
                                 latency_ms=tool_call_latency,
                                 success=tool_success,
                                 error=tool_error,
+                                output_tokens=tokens_per_tool,  # Cost to ask (LLM generation)
+                                input_tokens=result_tokens,     # Cost to process result (Tool Output)
                             ))
 
                             # Add tool result to messages
